@@ -1,0 +1,83 @@
+{
+  "Version": 3,
+  "FileReferences": {
+    "Moc": "catu.moc3",
+    "Textures": [
+      "texture_00.png",
+      "texture_01.png"
+    ],
+    "Physics": "catu.physics3.json",
+    "DisplayInfo": "catu.cdi3.json",
+    "Expressions": [
+      {
+        "Name": "blush_heart",
+        "File": "exp_blush_heart.exp3.json"
+      },
+      {
+        "Name": "angry",
+        "File": "exp_angry.exp3.json"
+      },
+      {
+        "Name": "dizzy",
+        "File": "exp_dizzy.exp3.json"
+      },
+      {
+        "Name": "star_eyes",
+        "File": "exp_star_eyes.exp3.json"
+      },
+      {
+        "Name": "tears",
+        "File": "exp_tears.exp3.json"
+      },
+      {
+        "Name": "hold_heart",
+        "File": "exp_hold_heart.exp3.json"
+      },
+      {
+        "Name": "begging",
+        "File": "exp_begging.exp3.json"
+      },
+      {
+        "Name": "dot_eyes",
+        "File": "exp_dot_eyes.exp3.json"
+      },
+      {
+        "Name": "monthly_card",
+        "File": "exp_monthly_card.exp3.json"
+      },
+      {
+        "Name": "squint",
+        "File": "exp_squint.exp3.json"
+      }
+    ],
+    "Motions": {
+      "Idle": [
+        {
+          "File": "motion_loop.motion3.json"
+        }
+      ],
+      "Sleep": [
+        {
+          "File": "motion_sleep.motion3.json"
+        }
+      ]
+    }
+  },
+  "Groups": [
+    {
+      "Target": "Parameter",
+      "Name": "LipSync",
+      "Ids": [
+        "ParamMouthOpenY"
+      ]
+    },
+    {
+      "Target": "Parameter",
+      "Name": "EyeBlink",
+      "Ids": [
+        "ParamEyeLOpen",
+        "ParamEyeROpen"
+      ]
+    }
+  ]
+}
