@@ -51,6 +51,14 @@
   <input id="key" type="password" placeholder="AIza..." autocomplete="off">
   <label>Model naam (agar error aaye to badal sakte ho)</label>
   <input id="model" type="text" placeholder="gemini-flash-latest" autocomplete="off">
+  <label>Catu ki awaaz</label>
+  <select id="voice" style="width:100%;padding:12px;border-radius:12px;border:1px solid rgba(167,139,250,.6);background:rgba(20,8,50,.9);color:#fff;font-size:15px">
+    <option value="Leda">Leda (young, cute)</option>
+    <option value="Zephyr">Zephyr (bright)</option>
+    <option value="Aoede">Aoede (breezy)</option>
+    <option value="Kore">Kore (firm)</option>
+    <option value="Puck">Puck (upbeat)</option>
+  </select>
   <div class="r2"><button id="saveS" class="big" style="flex:1;background:linear-gradient(135deg,#7c3aed,#db2777);border:none">Save</button><button id="closeS">Close</button></div>
   <div class="r2"><button id="clearChat">🗑 Chat saaf karo</button></div>
 </div>
@@ -94,6 +102,7 @@
   let wmParams = null, wmOn = true;           // artist's own watermark switch; ON = watermark hidden
   let speaking = false, mouth = 0;
   let history = [];
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   try { PIXI.settings.SPRITE_MAX_TEXTURES = Math.min(PIXI.settings.SPRITE_MAX_TEXTURES || 8, 16); } catch (e) {}
   try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch (e) {}
@@ -128,33 +137,102 @@
     }).catch((e) => showErr('Motion error: ' + (e.message || e)));
   }
 
-  /* ---------- speech out (TTS) with lip sync ---------- */
-  let voices = [];
-  function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch (e) {} }
-  loadVoices();
-  try { speechSynthesis.onvoiceschanged = loadVoices; } catch (e) {}
+  /* ---------- voice out: Gemini TTS + Web Audio (real lip sync) ---------- */
+  let actx = null, analyser = null, curSrc = null, audioPlaying = false;
+  const lvlBuf = new Float32Array(512);
+  const ttsCache = new Map();
+  function unlockAudio() {
+    try {
+      if (!actx) {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        actx = new AC(); analyser = actx.createAnalyser(); analyser.fftSize = 512; analyser.connect(actx.destination);
+      }
+      if (actx.state === 'suspended') actx.resume();
+    } catch (e) {}
+  }
+  document.addEventListener('pointerdown', unlockAudio);
+
+  function stopAudio() {
+    try { if (curSrc) { curSrc.onended = null; curSrc.stop(); } } catch (e) {}
+    curSrc = null; audioPlaying = false; speaking = false;
+    try { speechSynthesis.cancel(); } catch (e) {}
+  }
 
   function cleanForSpeech(t) {
     return t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').replace(/[~*_#`]/g, '').replace(/\s+/g, ' ').trim();
   }
-  function speak(text, opts) {
-    opts = opts || {};
+  const STYLE = { sad:'softly and sadly, almost crying', happy:'cheerfully and brightly', love:'sweetly, warm and affectionate', surprised:'with excitement and surprise',
+                  angry:'in a cute pouty, annoyed way', shy:'shyly, softly and a little flustered', dizzy:'in a dizzy, confused way', begging:'in a pleading, cute way', neutral:'sweetly and playfully' };
+
+  async function geminiTTS(text, emo) {
+    const key = localStorage.getItem('catu_key');
+    if (!key) throw new Error('API key nahi hai');
+    const voice = localStorage.getItem('catu_voice') || 'Leda';
+    const ck = voice + '|' + emo + '|' + text;
+    if (ttsCache.has(ck)) return ttsCache.get(ck);
+    const prompt = 'Say in a cute, sweet, expressive young anime girl voice, ' + (STYLE[emo] || STYLE.neutral) + ': ' + text;
+    const models = [localStorage.getItem('catu_tts') || 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'];
+    let lastErr;
+    for (const m of models) {
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(m) + ':generateContent', {
+            method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+            body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }],
+              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } }) });
+          if (!res.ok) { let d = ''; try { d = (await res.json()).error.message; } catch (e) {} const er = new Error(d || ('HTTP ' + res.status)); er.status = res.status; throw er; }
+          const data = await res.json();
+          const part = ((data.candidates || [])[0] || {}).content;
+          const inl = part && part.parts && part.parts.map(p => p.inlineData).find(Boolean);
+          if (!inl || !inl.data) throw new Error('Audio nahi aaya');
+          const bin = atob(inl.data); const n = bin.length >> 1; const f32 = new Float32Array(n);
+          for (let i = 0; i < n; i++) { let v = bin.charCodeAt(2 * i) | (bin.charCodeAt(2 * i + 1) << 8); if (v & 0x8000) v -= 0x10000; f32[i] = v / 32768; }
+          const rm = /rate=(\d+)/.exec(inl.mimeType || ''); const out = { f32, rate: rm ? +rm[1] : 24000 };
+          ttsCache.set(ck, out); return out;
+        } catch (e) {
+          lastErr = e;
+          if ([400, 401, 403, 404].includes(e.status)) break;      // try next model
+          await sleep(700);
+        }
+      }
+    }
+    throw lastErr || new Error('TTS fail');
+  }
+
+  function playPCM(a, onStart) {
+    unlockAudio(); stopAudio();
+    const b = actx.createBuffer(1, a.f32.length, a.rate); b.copyToChannel(a.f32, 0);
+    const s = actx.createBufferSource(); s.buffer = b; s.connect(analyser);
+    s.onended = () => { audioPlaying = false; curSrc = null; };
+    curSrc = s; audioPlaying = true; s.start(); if (onStart) onStart();
+  }
+
+  // browser voice = fallback only
+  let voices = [];
+  function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch (e) {} }
+  loadVoices(); try { speechSynthesis.onvoiceschanged = loadVoices; } catch (e) {}
+  function browserSpeak(text) {
     try {
-      if (!('speechSynthesis' in window)) return;
+      const clean = cleanForSpeech(text); if (!clean) return;
       speechSynthesis.cancel();
-      const clean = cleanForSpeech(text);
-      if (!clean) return;
       const u = new SpeechSynthesisUtterance(clean);
-      const hindi = /[\u0900-\u097F]/.test(clean);
-      u.lang = hindi ? 'hi-IN' : 'en-IN';
-      u.rate = opts.rate || 1.05; u.pitch = opts.pitch || 1.25;
-      const v = voices.find(v => v.lang.replace('_','-').toLowerCase() === u.lang.toLowerCase()) ||
-                voices.find(v => v.lang.toLowerCase().startsWith(hindi ? 'hi' : 'en'));
-      if (v) u.voice = v;
-      u.onstart = () => { speaking = true; };
-      u.onend = u.onerror = () => { speaking = false; };
+      const hindi = /[\u0900-\u097F]/.test(clean); u.lang = hindi ? 'hi-IN' : 'en-IN'; u.rate = 1.05; u.pitch = 1.25;
+      const v = voices.find(v => v.lang.toLowerCase().startsWith(hindi ? 'hi' : 'en')); if (v) u.voice = v;
+      u.onstart = () => { speaking = true; }; u.onend = u.onerror = () => { speaking = false; };
       speechSynthesis.speak(u);
     } catch (e) { speaking = false; }
+  }
+
+  // speak text; run onStart (expression / motion) exactly when the voice begins
+  async function say(text, emo, onStart) {
+    const clean = cleanForSpeech(text);
+    try {
+      const a = await geminiTTS(clean, emo || 'neutral');
+      playPCM(a, onStart);
+    } catch (e) {
+      showErr('Gemini awaaz nahi bani, browser awaaz use ho rahi hai. (' + (e.message || e) + ')');
+      if (onStart) onStart(); browserSpeak(text);
+    }
   }
 
   /* ---------- Gemini ---------- */
@@ -166,8 +244,6 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   const SCHEMA = { type: 'OBJECT', properties: {
     emotion: { type: 'STRING', enum: ['neutral','happy','love','surprised','sad','angry','shy','dizzy','begging'] },
     reply: { type: 'STRING' }, greeting: { type: 'BOOLEAN' } }, required: ['emotion','reply'] };
-
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
   async function callGemini(modelName, key, contents) {
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelName) + ':generateContent';
@@ -219,7 +295,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   async function send(text) {
     text = (text || '').trim();
     if (!text || busy || !model) return;
-    busy = true; $('txt').value = '';
+    unlockAudio(); stopAudio(); busy = true; $('txt').value = '';
     bubble(text, 'me');
     const thinking = bubble('...', 'cat');
     try {
@@ -238,10 +314,11 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   function react(r) {
     clearTimeout(resetTimer);
     const emo = EMO_MAP.hasOwnProperty(r.emotion) ? r.emotion : 'neutral';
-    setExpr(EMO_MAP[emo]);
-    if (r.greeting) motion('Hello'); else if (emo === 'sad') motion('Cry');
-    speak(r.reply, emo === 'sad' ? { rate: 0.95, pitch: 1.15 } : {});
-    resetTimer = setTimeout(resetExpr, Math.max(3500, r.reply.length * 90));
+    say(r.reply, r.emotion, () => {
+      setExpr(EMO_MAP[emo]);
+      if (r.greeting) motion('Hello'); else if (emo === 'sad') motion('Cry');
+      resetTimer = setTimeout(resetExpr, Math.max(3500, r.reply.length * 90));
+    });
   }
 
   $('send').onclick = () => send($('txt').value);
@@ -253,7 +330,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   $('mic').onclick = () => {
     if (!SR) { showErr('Is browser mein mic support nahi hai. Chrome use karo.'); return; }
     if (listening) { try { rec.stop(); } catch (e) {} return; }
-    try { speechSynthesis.cancel(); speaking = false; } catch (e) {}
+    unlockAudio(); stopAudio();
     rec = new SR(); rec.lang = 'hi-IN'; rec.interimResults = false; rec.maxAlternatives = 1;
     rec.onstart = () => { listening = true; $('mic').classList.add('rec'); };
     rec.onend = () => { listening = false; $('mic').classList.remove('rec'); };
@@ -264,14 +341,12 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
 
   /* ---------- buttons ---------- */
   $('bHello').onclick = () => {
-    if (!model) return; clearTimeout(resetTimer);
-    setExpr('blush_heart'); motion('Hello'); speak('हेलो शुभम, कैसे हो?', { rate: 1.1, pitch: 1.3 });
-    resetTimer = setTimeout(resetExpr, 3200);
+    if (!model) return; clearTimeout(resetTimer); unlockAudio();
+    say('हेलो शुभम, कैसे हो?', 'happy', () => { setExpr('blush_heart'); motion('Hello'); resetTimer = setTimeout(resetExpr, 3200); });
   };
   $('bCry').onclick = () => {
-    if (!model) return; clearTimeout(resetTimer);
-    setExpr('tears'); motion('Cry'); speak('मैं बहुत उदास हूँ शुभम', { rate: 0.95, pitch: 1.2 });
-    resetTimer = setTimeout(resetExpr, 4500);
+    if (!model) return; clearTimeout(resetTimer); unlockAudio();
+    say('मैं बहुत उदास हूँ शुभम...', 'sad', () => { setExpr('tears'); motion('Cry'); resetTimer = setTimeout(resetExpr, 4500); });
   };
   $('bExp').onclick = () => { const c = $('chips'); c.style.display = c.style.display === 'flex' ? 'none' : 'flex'; c.style.flexWrap = 'wrap'; fit(); };
 
@@ -294,12 +369,14 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   chips.style.justifyContent = 'center';
 
   /* ---------- settings ---------- */
-  function openSettings() { $('key').value = localStorage.getItem('catu_key') || ''; $('model').value = localStorage.getItem('catu_model') || ''; $('settings').style.display = 'block'; }
+  function openSettings() { $('key').value = localStorage.getItem('catu_key') || ''; $('model').value = localStorage.getItem('catu_model') || ''; $('voice').value = localStorage.getItem('catu_voice') || 'Leda'; $('settings').style.display = 'block'; }
   $('gear').onclick = openSettings;
   $('closeS').onclick = () => { $('settings').style.display = 'none'; };
   $('saveS').onclick = () => {
     localStorage.setItem('catu_key', $('key').value.trim());
     const m = $('model').value.trim(); if (m) localStorage.setItem('catu_model', m); else localStorage.removeItem('catu_model');
+    localStorage.setItem('catu_voice', $('voice').value);
+    ttsCache.clear();
     $('settings').style.display = 'none';
   };
   $('clearChat').onclick = () => { history = []; chat.innerHTML = ''; bubble('Chat saaf ho gayi nya~', 'cat'); $('settings').style.display = 'none'; };
@@ -310,14 +387,34 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
     app.stage.addChild(model);
     try {
       let t0 = performance.now();
+      const add = (cm, id, d) => { try { cm.setParameterValueById(id, cm.getParameterValueById(id) + d); } catch (e) {} };
+      const set = (cm, id, v) => { try { cm.setParameterValueById(id, v); } catch (e) {} };
       model.internalModel.on('beforeModelUpdate', () => {
         const cm = model.internalModel.coreModel;
-        if (wmOn && wmParams) wmParams.forEach(p => { try { cm.setParameterValueById(p.Id, p.Value); } catch (e) {} });
-        // lip sync while Catu is speaking
+        if (wmOn && wmParams) wmParams.forEach(p => set(cm, p.Id, p.Value));
         const t = (performance.now() - t0) / 1000;
-        const target = speaking ? Math.min(1, 0.15 + 0.6 * Math.abs(Math.sin(t * 9)) * (0.6 + 0.4 * Math.sin(t * 3.7))) : 0;
-        mouth += (target - mouth) * 0.35;
-        if (speaking || mouth > 0.02) { try { cm.setParameterValueById('ParamMouthOpenY', mouth); } catch (e) {} }
+        let target = 0;
+        if (audioPlaying && analyser) {
+          analyser.getFloatTimeDomainData(lvlBuf);
+          let s = 0; for (let i = 0; i < lvlBuf.length; i++) s += lvlBuf[i] * lvlBuf[i];
+          target = Math.min(1, Math.sqrt(s / lvlBuf.length) * 9);
+        } else if (speaking) {
+          target = Math.min(1, 0.15 + 0.6 * Math.abs(Math.sin(t * 9)) * (0.6 + 0.4 * Math.sin(t * 3.7)));
+        }
+        mouth += (target - mouth) * 0.55;
+        const active = audioPlaying || speaking;
+        if (active || mouth > 0.02) {
+          set(cm, 'ParamMouthOpenY', mouth);
+          set(cm, 'MouthJawOpen', mouth * 0.9);
+          set(cm, 'MouthFunnel', mouth * 0.35 * (0.5 + 0.5 * Math.sin(t * 5)));
+          if (active) set(cm, 'ParamMouthForm', 0.35);
+        }
+        if (active) {                      // little head/body movement with the voice
+          add(cm, 'ParamAngleY', -mouth * 5 + 1.5 * Math.sin(t * 2.6));
+          add(cm, 'ParamAngleZ', 4 * Math.sin(t * 1.9));
+          add(cm, 'ParamAngleX', 3 * Math.sin(t * 1.3));
+          add(cm, 'ParamBodyAngleY', -mouth * 2);
+        }
       });
     } catch (e) { showErr('Hook error: ' + (e.message || e)); }
     fit();
