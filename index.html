@@ -277,25 +277,31 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
     catch (e) { return { emotion: 'neutral', reply: text }; }
   }
 
+  // If one model is overloaded (503), quickly move on to the next one. The model that worked last is tried first.
+  const CHAIN = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
+  let lastGood = null;
   async function askGemini(userText) {
     const key = localStorage.getItem('catu_key');
     if (!key) { openSettings(); throw new Error('Pehle Gemini API key daalo (⚙️).'); }
-    const main = localStorage.getItem('catu_model') || DEFAULT_MODEL;
+    const custom = localStorage.getItem('catu_model');
     const contents = history.concat([{ role: 'user', parts: [{ text: userText }] }]);
-    const order = [main, main, main, FALLBACK_MODEL];
-    let lastErr;
-    for (let i = 0; i < order.length; i++) {
-      try { return await callGemini(order[i], key, contents); }
-      catch (e) {
-        lastErr = e;
-        if ([400, 401, 403, 404].includes(e.status)) {
-          if (e.status === 404 && order[i] !== FALLBACK_MODEL) { continue; }
-          throw new Error(e.status === 404 ? 'Model naam galat hai. ⚙️ mein "gemini-flash-latest" likh ke dekho.' : 'API key ya request galat: ' + e.message);
+    const order = [lastGood, custom].concat(CHAIN).filter((m, i, a) => m && a.indexOf(m) === i);
+    let lastErr, tried = 0;
+    for (let pass = 0; pass < 2; pass++) {
+      for (const m of order) {
+        try {
+          const r = await callGemini(m, key, contents);
+          lastGood = m; r._model = m; return r;
+        } catch (e) {
+          lastErr = e; tried++;
+          if ([401, 403].includes(e.status) || (e.status === 400 && /API key|key not valid/i.test(e.message))) throw new Error('API key galat hai ya kaam nahi kar rahi: ' + e.message);
+          setStat('🔄 doosra model try ho raha hai...');
+          await sleep(e.status === 404 || e.status === 400 ? 0 : 500);
         }
-        if (i < order.length - 1) await sleep(1000 * Math.pow(2, i));
       }
+      if (pass === 0) await sleep(1500);
     }
-    throw new Error('Server busy hai nya~ thodi der baad try karo. (' + (lastErr && lastErr.message || '') + ')');
+    throw new Error('Gemini abhi bahut busy hai nya~ 1 minute baad try karo. (' + (lastErr && lastErr.message || '') + ')');
   }
 
   /* ---------- chat UI ---------- */
@@ -321,7 +327,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
     try {
       const r = await askGemini(text);
       setStat(''); isThinking = false;
-      dbg('jawab ' + ((performance.now() - ts) / 1000).toFixed(1) + 's');
+      dbg('jawab ' + ((performance.now() - ts) / 1000).toFixed(1) + 's (' + (r._model || '') + ')');
       history.push({ role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: r.reply }] });
       history = history.slice(-16);
       thinking.textContent = r.reply;
