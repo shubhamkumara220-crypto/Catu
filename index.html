@@ -96,7 +96,7 @@
 
   let model = null, app = null, resetTimer = null;
   let wmParams = null, wmOn = true;           // artist's own watermark switch; ON = watermark hidden
-  let speaking = false, frameNo = 0, mouth = 0, isThinking = false, think = 0;
+  let mtest = 0, speaking = false, frameNo = 0, mouth = 0, isThinking = false, think = 0;
   let history = [];
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const setStat = (t) => { $('stat').textContent = t || ''; };
@@ -281,7 +281,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
 
   // If one model is overloaded (503), quickly move on to the next one. The model that worked last is tried first.
   const CHAIN = ['gemini-flash-lite-latest', 'gemini-flash-latest', 'gemini-2.5-flash-lite', 'gemini-2.5-flash'];
-  let lastGood = null;
+  let lastGood = localStorage.getItem('catu_lastgood') || null;
   async function askGemini(userText) {
     const key = localStorage.getItem('catu_key');
     if (!key) { openSettings(); throw new Error('Pehle Gemini API key daalo (⚙️).'); }
@@ -293,7 +293,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
       for (const m of order) {
         try {
           const r = await callGemini(m, key, contents);
-          lastGood = m; r._model = m; return r;
+          lastGood = m; try { localStorage.setItem('catu_lastgood', m); } catch (e) {} r._model = m; return r;
         } catch (e) {
           lastErr = e; tried++;
           if ([401, 403].includes(e.status) || (e.status === 400 && /API key|key not valid/i.test(e.message))) throw new Error('API key galat hai ya kaam nahi kar rahi: ' + e.message);
@@ -376,6 +376,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   /* ---------- settings ---------- */
   function openSettings() { $('key').value = localStorage.getItem('catu_key') || ''; $('model').value = localStorage.getItem('catu_model') || ''; $('voice').value = localStorage.getItem('catu_voice') || 'Leda'; $('settings').style.display = 'block'; }
   $('gear').onclick = openSettings;
+  document.querySelector('#top b').onclick = () => { mtest = performance.now(); };
   $('closeS').onclick = () => { $('settings').style.display = 'none'; };
   $('saveS').onclick = () => {
     localStorage.setItem('catu_key', $('key').value.trim());
@@ -419,6 +420,17 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
           const st = $('stat');
           if (active) st.textContent = '👄 ' + mouth.toFixed(2) + (audioPlaying ? ' 🔊' : ' 📱');
           else if (st.textContent.charAt(0) === '👄') st.textContent = '';
+        }
+        if (mtest) {
+          const el = (performance.now() - mtest) / 1000;
+          const seq = [['ParamMouthOpenY2', 0, 1], ['ParamMouthForm2', -1, 1], ['ParamMouthOpenY2', 0, 1]];
+          const idx = Math.floor(el / 2.5);
+          if (idx >= seq.length) { mtest = 0; $('stat').textContent = ''; }
+          else {
+            const [pid, lo, hi] = seq[idx]; const ph = (el % 2.5) / 2.5;
+            const v = lo + (hi - lo) * (ph < 0.5 ? ph * 2 : 2 - ph * 2);
+            set(cm, pid, v); $('stat').textContent = '🧪 ' + pid + ' = ' + v.toFixed(2);
+          }
         }
         think += ((isThinking ? 1 : 0) - think) * 0.12;
         if (think > 0.01) {
