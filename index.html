@@ -14,7 +14,7 @@
   #badge { font-size:12px; padding:3px 9px; border-radius:99px; border:1px solid var(--accent); color:var(--accent); }
   #gear { margin-left:auto; padding:6px 10px; font-size:16px; }
   #bottom { position:fixed; left:0; right:0; bottom:0; padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 10px); z-index:5; background:linear-gradient(to top, rgba(11,4,32,.96) 70%, rgba(11,4,32,0)); }
-  #chat { max-height:24vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+  #chat { height:17vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
   .b { max-width:88%; padding:8px 12px; border-radius:14px; font-size:14px; line-height:1.35; word-break:break-word; }
   .me { align-self:flex-end; background:linear-gradient(135deg,#7c3aed,#a855f7); }
   .cat { align-self:flex-start; background:rgba(60,30,120,.85); border:1px solid rgba(167,139,250,.4); }
@@ -27,7 +27,8 @@
   @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(220,38,38,.7)} 100%{box-shadow:0 0 0 16px rgba(220,38,38,0)} }
   .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
   .chips button { font-size:12px; padding:6px 10px; border-radius:99px; }
-  #chips { display:none; }
+  #chips { display:none; position:absolute; left:0; right:0; bottom:100%; padding:0 12px 6px; justify-content:center; flex-wrap:wrap; background:linear-gradient(to top, rgba(11,4,32,.9), rgba(11,4,32,0)); }
+  #stat { font-size:12px; color:#f9a8d4; margin-left:6px; }
   #msg { position:fixed; left:12px; right:12px; top:calc(env(safe-area-inset-top,0px) + 48px); z-index:8; font-size:13px; padding:10px 12px; border-radius:12px; display:none; background:rgba(150,20,30,.94); white-space:pre-wrap; word-break:break-word; }
   #load { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:4; font-size:16px; color:#c4b5fd; pointer-events:none; text-align:center; padding:20px; }
   #settings { position:fixed; inset:0; z-index:9; background:rgba(5,2,15,.92); display:none; padding:calc(env(safe-area-inset-top,0px) + 20px) 18px 20px; overflow:auto; }
@@ -40,7 +41,7 @@
 </head>
 <body>
 <canvas id="stage"></canvas>
-<div id="top"><b>Catu AI</b><span id="badge">Live2D</span><button id="gear">⚙️</button></div>
+<div id="top"><b>Catu AI</b><span id="badge">Live2D</span><span id="stat"></span><button id="gear">⚙️</button></div>
 <div id="load">Catu load ho rahi hai nya~ ... (thoda time lag sakta hai)</div>
 <div id="msg"></div>
 
@@ -70,12 +71,6 @@
     <input id="txt" type="text" placeholder="Catu se kuch bhi pucho..." autocomplete="off">
     <button id="send" title="Bhejo">➤</button>
   </div>
-  <div class="row">
-    <button id="bHello">👋 Hello</button>
-    <button id="bCry">😢 Cry</button>
-    <button id="bExp">🎭 Expressions</button>
-  </div>
-  <div class="row chips" id="chips"></div>
 </div>
 
 <script src="https://cubism.live2d.com/sdk-web/cubismcore/live2dcubismcore.min.js"></script>
@@ -85,7 +80,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const msg = $('msg');
-  function showErr(t) { msg.style.display = 'block'; msg.textContent = t; clearTimeout(showErr.t); showErr.t = setTimeout(() => msg.style.display = 'none', 7000); console.error(t); }
+  function showErr(t) { msg.style.display = 'block'; msg.textContent = t; clearTimeout(showErr.t); showErr.t = setTimeout(() => msg.style.display = 'none', 10000); console.error(t); }
   window.addEventListener('error', (e) => showErr('Error: ' + e.message));
   window.addEventListener('unhandledrejection', (e) => showErr('Error: ' + (e.reason && e.reason.message || e.reason)));
 
@@ -103,12 +98,19 @@
   let speaking = false, mouth = 0;
   let history = [];
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+  const setStat = (t) => { $('stat').textContent = t || ''; };
+  async function fetchT(url, opts, ms) {
+    const ac = new AbortController(); const tm = setTimeout(() => ac.abort(), ms);
+    try { return await fetch(url, Object.assign({}, opts, { signal: ac.signal })); }
+    catch (e) { if (e.name === 'AbortError') { const er = new Error('Bahut der lag gayi (timeout)'); er.status = 408; throw er; } throw e; }
+    finally { clearTimeout(tm); }
+  }
 
   try { PIXI.settings.SPRITE_MAX_TEXTURES = Math.min(PIXI.settings.SPRITE_MAX_TEXTURES || 8, 16); } catch (e) {}
   try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch (e) {}
 
-  app = new PIXI.Application({ view: $('stage'), resizeTo: window, backgroundAlpha: 0, antialias: true, autoDensity: true,
-    resolution: Math.min(window.devicePixelRatio || 1, 2), powerPreference: 'low-power' });
+  app = new PIXI.Application({ view: $('stage'), resizeTo: window, backgroundAlpha: 0, antialias: false, autoDensity: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 1.5), powerPreference: 'low-power' });
 
   function fit() {
     if (!model) return;
@@ -123,7 +125,6 @@
     model.y = top + availH / 2;
   }
   window.addEventListener('resize', fit);
-  try { new ResizeObserver(fit).observe($('bottom')); } catch (e) {}
 
   /* ---------- expressions & motions ---------- */
   function resetExpr() { try { model.internalModel.motionManager.expressionManager.resetExpression(); } catch (e) {} }
@@ -176,10 +177,10 @@
     for (const m of models) {
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
-          const res = await fetch('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(m) + ':generateContent', {
+          const res = await fetchT('https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(m) + ':generateContent', {
             method: 'POST', headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
             body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } }) });
+              generationConfig: { responseModalities: ['AUDIO'], speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } } } } }) }, 15000);
           if (!res.ok) { let d = ''; try { d = (await res.json()).error.message; } catch (e) {} const er = new Error(d || ('HTTP ' + res.status)); er.status = res.status; throw er; }
           const data = await res.json();
           const part = ((data.candidates || [])[0] || {}).content;
@@ -191,16 +192,17 @@
           ttsCache.set(ck, out); return out;
         } catch (e) {
           lastErr = e;
-          if ([400, 401, 403, 404].includes(e.status)) break;      // try next model
-          await sleep(700);
+          if ([400, 401, 403, 404, 408, 429].includes(e.status)) break;   // go to next model straight away
+          await sleep(600);
         }
       }
     }
     throw lastErr || new Error('TTS fail');
   }
 
-  function playPCM(a, onStart) {
+  async function playPCM(a, onStart) {
     unlockAudio(); stopAudio();
+    try { if (actx.state !== 'running') await Promise.race([actx.resume(), sleep(800)]); } catch (e) {}
     const b = actx.createBuffer(1, a.f32.length, a.rate); b.copyToChannel(a.f32, 0);
     const s = actx.createBufferSource(); s.buffer = b; s.connect(analyser);
     s.onended = () => { audioPlaying = false; curSrc = null; };
@@ -226,11 +228,15 @@
   // speak text; run onStart (expression / motion) exactly when the voice begins
   async function say(text, emo, onStart) {
     const clean = cleanForSpeech(text);
+    setStat('🔊 awaaz ban rahi hai...');
     try {
       const a = await geminiTTS(clean, emo || 'neutral');
-      playPCM(a, onStart);
+      setStat('');
+      await playPCM(a, onStart);
     } catch (e) {
-      showErr('Gemini awaaz nahi bani, browser awaaz use ho rahi hai. (' + (e.message || e) + ')');
+      setStat('');
+      const why = e.status === 429 ? 'Gemini awaaz ki limit bhar gayi (thodi der ruko)' : (e.message || e);
+      showErr('Gemini awaaz nahi bani, phone ki awaaz use ho rahi hai. (' + why + ')');
       if (onStart) onStart(); browserSpeak(text);
     }
   }
@@ -247,10 +253,10 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
 
   async function callGemini(modelName, key, contents) {
     const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelName) + ':generateContent';
-    const res = await fetch(url, { method: 'POST',
+    const res = await fetchT(url, { method: 'POST',
       headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
       body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents,
-        generationConfig: { temperature: 1, responseMimeType: 'application/json', responseSchema: SCHEMA } }) });
+        generationConfig: { temperature: 1, responseMimeType: 'application/json', responseSchema: SCHEMA } }) }, 15000);
     if (!res.ok) { let d = ''; try { d = (await res.json()).error.message; } catch (e) {} const err = new Error(d || ('HTTP ' + res.status)); err.status = res.status; throw err; }
     const data = await res.json();
     const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
@@ -298,14 +304,17 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
     unlockAudio(); stopAudio(); busy = true; $('txt').value = '';
     bubble(text, 'me');
     const thinking = bubble('...', 'cat');
+    setStat('🧠 soch rahi hai...');
     try {
       const r = await askGemini(text);
+      setStat('');
       history.push({ role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: r.reply }] });
       history = history.slice(-16);
       thinking.textContent = r.reply;
       chat.scrollTop = chat.scrollHeight;
       react(r);
     } catch (e) {
+      setStat('');
       thinking.textContent = 'Oops nya~ ' + e.message;
       showErr(e.message);
     } finally { busy = false; }
@@ -314,9 +323,10 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
   function react(r) {
     clearTimeout(resetTimer);
     const emo = EMO_MAP.hasOwnProperty(r.emotion) ? r.emotion : 'neutral';
-    say(r.reply, r.emotion, () => {
-      setExpr(EMO_MAP[emo]);
+    setExpr(EMO_MAP[emo]);                                   // face reacts immediately
+    say(r.reply, r.emotion, () => {                          // motion starts together with the voice
       if (r.greeting) motion('Hello'); else if (emo === 'sad') motion('Cry');
+      clearTimeout(resetTimer);
       resetTimer = setTimeout(resetExpr, Math.max(3500, r.reply.length * 90));
     });
   }
@@ -339,34 +349,7 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
     try { rec.start(); } catch (e) { showErr('Mic start nahi hua: ' + e.message); }
   };
 
-  /* ---------- buttons ---------- */
-  $('bHello').onclick = () => {
-    if (!model) return; clearTimeout(resetTimer); unlockAudio();
-    say('हेलो शुभम, कैसे हो?', 'happy', () => { setExpr('blush_heart'); motion('Hello'); resetTimer = setTimeout(resetExpr, 3200); });
-  };
-  $('bCry').onclick = () => {
-    if (!model) return; clearTimeout(resetTimer); unlockAudio();
-    say('मैं बहुत उदास हूँ शुभम...', 'sad', () => { setExpr('tears'); motion('Cry'); resetTimer = setTimeout(resetExpr, 4500); });
-  };
-  $('bExp').onclick = () => { const c = $('chips'); c.style.display = c.style.display === 'flex' ? 'none' : 'flex'; c.style.flexWrap = 'wrap'; fit(); };
-
-  const chips = $('chips');
-  EXPRESSIONS.forEach((n) => {
-    const b = document.createElement('button');
-    b.textContent = n.replace(/_/g, ' ');
-    b.onclick = () => { clearTimeout(resetTimer); setExpr(n); };
-    chips.appendChild(b);
-  });
-  const rb = document.createElement('button');
-  rb.textContent = '↺ reset'; rb.onclick = () => { clearTimeout(resetTimer); resetExpr(); };
-  chips.appendChild(rb);
-  const wb = document.createElement('button');
-  const wbLabel = () => { wb.textContent = wmOn ? '🏷 watermark: hidden' : '🏷 watermark: shown'; };
-  wbLabel();
-  wb.onclick = () => { wmOn = !wmOn; wbLabel(); };
-  chips.appendChild(wb);
   fetch('watermark_toggle.exp3.json').then(r => r.json()).then(j => { wmParams = j.Parameters || []; }).catch(() => {});
-  chips.style.justifyContent = 'center';
 
   /* ---------- settings ---------- */
   function openSettings() { $('key').value = localStorage.getItem('catu_key') || ''; $('model').value = localStorage.getItem('catu_model') || ''; $('voice').value = localStorage.getItem('catu_voice') || 'Leda'; $('settings').style.display = 'block'; }
