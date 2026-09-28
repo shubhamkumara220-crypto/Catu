@@ -51,8 +51,9 @@
   if (!window.PIXI || !PIXI.live2d) { showErr('Pixi / pixi-live2d-display load nahi hua.'); return; }
 
   const MODEL_URL = 'catu.model3.json';
-  const EXPRESSIONS = ['blush_heart','angry','dizzy','star_eyes','tears','hold_heart','begging','dot_eyes','monthly_card','squint'];
+  const EXPRESSIONS = ['dark_face','blush_heart','angry','dizzy','star_eyes','tears','hold_heart','begging','dot_eyes','monthly_card','squint'];
   let model = null, app = null, resetTimer = null;
+  let wmParams = null, wmOn = false; // key12 = artist's own watermark switch (0 = model default, 1 = toggled)
 
   try { PIXI.settings.SPRITE_MAX_TEXTURES = Math.min(PIXI.settings.SPRITE_MAX_TEXTURES || 8, 16); } catch (e) {}
   try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch (e) {}
@@ -125,9 +126,30 @@
   rb.textContent = '↺ reset'; rb.onclick = () => { clearTimeout(resetTimer); resetExpr(); };
   chips.appendChild(rb);
 
+
+  // Creator's own watermark toggle (watermark_toggle.exp3.json): applied as parameters every frame,
+  // so it works together with the other expressions.
+  const wb = document.createElement('button');
+  wb.textContent = '🏷 watermark toggle';
+  wb.onclick = () => {
+    if (!wmParams) { showErr('watermark_toggle.exp3.json load nahi hui. GitHub par upload hui?'); return; }
+    wmOn = !wmOn;
+    wb.style.borderColor = wmOn ? '#f472b6' : '';
+    wb.textContent = wmOn ? '🏷 watermark toggle (ON)' : '🏷 watermark toggle';
+  };
+  chips.appendChild(wb);
+  fetch('watermark_toggle.exp3.json').then(r => r.json()).then(j => { wmParams = j.Parameters || []; }).catch(() => {});
+
   PIXI.live2d.Live2DModel.from(MODEL_URL, { autoInteract: false }).then((m) => {
     model = m;
     app.stage.addChild(model);
+    try {
+      model.internalModel.on('beforeModelUpdate', () => {
+        if (!wmOn || !wmParams) return;
+        const cm = model.internalModel.coreModel;
+        wmParams.forEach(p => { try { cm.setParameterValueById(p.Id, p.Value); } catch (e) {} });
+      });
+    } catch (e) { showErr('Watermark hook error: ' + (e.message || e)); }
     fit();
     $('load').style.display = 'none';
   }).catch((e) => {

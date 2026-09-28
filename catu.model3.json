@@ -48,6 +48,10 @@
       {
         "Name": "squint",
         "File": "exp_squint.exp3.json"
+      },
+      {
+        "Name": "dark_face",
+        "File": "exp_dark_face.exp3.json"
       }
     ],
     "Motions": {
