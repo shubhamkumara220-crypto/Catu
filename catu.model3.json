@@ -68,15 +68,15 @@
       "Hello": [
         {
           "File": "motion_hello.motion3.json",
-          "FadeInTime": 0.4,
-          "FadeOutTime": 0.6
+          "FadeInTime": 0.25,
+          "FadeOutTime": 0.35
         }
       ],
       "Cry": [
         {
           "File": "motion_cry.motion3.json",
-          "FadeInTime": 0.6,
-          "FadeOutTime": 0.8
+          "FadeInTime": 0.3,
+          "FadeOutTime": 0.4
         }
       ]
     }

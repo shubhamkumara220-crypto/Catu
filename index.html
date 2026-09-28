@@ -6,32 +6,66 @@
 <title>Catu AI</title>
 <style>
   :root { --bg1:#1a0b3b; --bg2:#0b0420; --accent:#a78bfa; --pink:#f472b6; }
-  * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
-  html, body { margin:0; height:100%; overflow:hidden; background: radial-gradient(circle at 50% 35%, var(--bg1), var(--bg2)); font-family: system-ui, sans-serif; color:#fff; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; height:100%; overflow:hidden; background:radial-gradient(circle at 50% 35%, var(--bg1), var(--bg2)); font-family:system-ui,sans-serif; color:#fff; }
   #stage { position:fixed; inset:0; width:100%; height:100%; display:block; }
-  #top { position:fixed; top:0; left:0; right:0; padding:calc(env(safe-area-inset-top,0px) + 10px) 14px 8px; display:flex; align-items:center; gap:10px; z-index:5; }
+  #top { position:fixed; top:0; left:0; right:0; padding:calc(env(safe-area-inset-top,0px) + 8px) 14px 6px; display:flex; align-items:center; gap:10px; z-index:5; }
   #top b { font-size:18px; }
   #badge { font-size:12px; padding:3px 9px; border-radius:99px; border:1px solid var(--accent); color:var(--accent); }
-  #bottom { position:fixed; left:0; right:0; bottom:0; padding:10px 12px calc(env(safe-area-inset-bottom,0px) + 12px); z-index:5;
-            background: linear-gradient(to top, rgba(11,4,32,.95), rgba(11,4,32,0)); }
-  .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
-  button { border:1px solid rgba(167,139,250,.6); background:rgba(40,20,90,.75); color:#fff; border-radius:14px; padding:10px 14px; font-size:14px; }
+  #gear { margin-left:auto; padding:6px 10px; font-size:16px; }
+  #bottom { position:fixed; left:0; right:0; bottom:0; padding:8px 12px calc(env(safe-area-inset-bottom,0px) + 10px); z-index:5; background:linear-gradient(to top, rgba(11,4,32,.96) 70%, rgba(11,4,32,0)); }
+  #chat { max-height:24vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:8px; }
+  .b { max-width:88%; padding:8px 12px; border-radius:14px; font-size:14px; line-height:1.35; word-break:break-word; }
+  .me { align-self:flex-end; background:linear-gradient(135deg,#7c3aed,#a855f7); }
+  .cat { align-self:flex-start; background:rgba(60,30,120,.85); border:1px solid rgba(167,139,250,.4); }
+  .inrow { display:flex; gap:8px; align-items:center; }
+  #txt { flex:1; min-width:0; padding:12px 14px; border-radius:99px; border:1px solid rgba(167,139,250,.6); background:rgba(20,8,50,.9); color:#fff; font-size:15px; outline:none; }
+  button { border:1px solid rgba(167,139,250,.6); background:rgba(40,20,90,.75); color:#fff; border-radius:14px; padding:9px 12px; font-size:14px; }
   button:active { transform:scale(.96); }
-  .big { font-size:17px; padding:13px 22px; background:linear-gradient(135deg,#7c3aed,#db2777); border:none; font-weight:600; }
-  .chips button { font-size:12px; padding:7px 10px; border-radius:99px; }
-  #msg { position:fixed; left:12px; right:12px; top:calc(env(safe-area-inset-top,0px) + 52px); z-index:6; font-size:13px; padding:10px 12px; border-radius:12px; display:none; background:rgba(150,20,30,.92); white-space:pre-wrap; word-break:break-word; }
+  #mic, #send { border-radius:50%; width:48px; height:48px; padding:0; font-size:20px; flex:none; border:none; background:linear-gradient(135deg,#7c3aed,#db2777); }
+  #mic.rec { animation:pulse 1s infinite; background:#dc2626; }
+  @keyframes pulse { 0%{box-shadow:0 0 0 0 rgba(220,38,38,.7)} 100%{box-shadow:0 0 0 16px rgba(220,38,38,0)} }
+  .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
+  .chips button { font-size:12px; padding:6px 10px; border-radius:99px; }
+  #chips { display:none; }
+  #msg { position:fixed; left:12px; right:12px; top:calc(env(safe-area-inset-top,0px) + 48px); z-index:8; font-size:13px; padding:10px 12px; border-radius:12px; display:none; background:rgba(150,20,30,.94); white-space:pre-wrap; word-break:break-word; }
   #load { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:4; font-size:16px; color:#c4b5fd; pointer-events:none; text-align:center; padding:20px; }
+  #settings { position:fixed; inset:0; z-index:9; background:rgba(5,2,15,.92); display:none; padding:calc(env(safe-area-inset-top,0px) + 20px) 18px 20px; overflow:auto; }
+  #settings h3 { margin:0 0 10px; }
+  #settings label { display:block; margin:14px 0 6px; font-size:13px; color:#c4b5fd; }
+  #settings input { width:100%; padding:12px; border-radius:12px; border:1px solid rgba(167,139,250,.6); background:rgba(20,8,50,.9); color:#fff; font-size:15px; }
+  #settings p { font-size:13px; color:#c4b5fd; line-height:1.5; }
+  #settings .r2 { display:flex; gap:10px; margin-top:18px; }
 </style>
 </head>
 <body>
 <canvas id="stage"></canvas>
-<div id="top"><b>Catu AI</b><span id="badge">Live2D</span></div>
+<div id="top"><b>Catu AI</b><span id="badge">Live2D</span><button id="gear">⚙️</button></div>
 <div id="load">Catu load ho rahi hai nya~ ... (thoda time lag sakta hai)</div>
 <div id="msg"></div>
+
+<div id="settings">
+  <h3>⚙️ Settings</h3>
+  <p>Catu ko bolne ke liye Gemini API key chahiye (free). <b>aistudio.google.com/apikey</b> par jao, "Create API key" dabao, key copy karke yahan paste karo. Key sirf tumhare phone ke browser mein save hoti hai (GitHub par nahi).</p>
+  <label>Gemini API key</label>
+  <input id="key" type="password" placeholder="AIza..." autocomplete="off">
+  <label>Model naam (agar error aaye to badal sakte ho)</label>
+  <input id="model" type="text" placeholder="gemini-flash-latest" autocomplete="off">
+  <div class="r2"><button id="saveS" class="big" style="flex:1;background:linear-gradient(135deg,#7c3aed,#db2777);border:none">Save</button><button id="closeS">Close</button></div>
+  <div class="r2"><button id="clearChat">🗑 Chat saaf karo</button></div>
+</div>
+
 <div id="bottom">
+  <div id="chat"></div>
+  <div class="inrow">
+    <button id="mic" title="Bolo">🎤</button>
+    <input id="txt" type="text" placeholder="Catu se kuch bhi pucho..." autocomplete="off">
+    <button id="send" title="Bhejo">➤</button>
+  </div>
   <div class="row">
-    <button class="big" id="bHello">👋 Hello</button>
-    <button class="big" id="bCry">😢 Cry</button>
+    <button id="bHello">👋 Hello</button>
+    <button id="bCry">😢 Cry</button>
+    <button id="bExp">🎭 Expressions</button>
   </div>
   <div class="row chips" id="chips"></div>
 </div>
@@ -43,7 +77,7 @@
 (function () {
   const $ = (id) => document.getElementById(id);
   const msg = $('msg');
-  function showErr(t) { msg.style.display = 'block'; msg.textContent = t; console.error(t); }
+  function showErr(t) { msg.style.display = 'block'; msg.textContent = t; clearTimeout(showErr.t); showErr.t = setTimeout(() => msg.style.display = 'none', 7000); console.error(t); }
   window.addEventListener('error', (e) => showErr('Error: ' + e.message));
   window.addEventListener('unhandledrejection', (e) => showErr('Error: ' + (e.reason && e.reason.message || e.reason)));
 
@@ -52,68 +86,194 @@
 
   const MODEL_URL = 'catu.model3.json';
   const EXPRESSIONS = ['dark_face','blush_heart','angry','dizzy','star_eyes','tears','hold_heart','begging','dot_eyes','monthly_card','squint'];
+  const EMO_MAP = { neutral:null, happy:'star_eyes', love:'blush_heart', surprised:'dot_eyes', sad:'tears', angry:'angry', shy:'hold_heart', dizzy:'dizzy', begging:'begging' };
+  const DEFAULT_MODEL = 'gemini-flash-latest';
+  const FALLBACK_MODEL = 'gemini-flash-lite-latest';
+
   let model = null, app = null, resetTimer = null;
-  let wmParams = null, wmOn = false; // key12 = artist's own watermark switch (0 = model default, 1 = toggled)
+  let wmParams = null, wmOn = true;           // artist's own watermark switch; ON = watermark hidden
+  let speaking = false, mouth = 0;
+  let history = [];
 
   try { PIXI.settings.SPRITE_MAX_TEXTURES = Math.min(PIXI.settings.SPRITE_MAX_TEXTURES || 8, 16); } catch (e) {}
   try { PIXI.live2d.Live2DModel.registerTicker(PIXI.Ticker); } catch (e) {}
 
-  app = new PIXI.Application({
-    view: $('stage'),
-    resizeTo: window,
-    backgroundAlpha: 0,
-    antialias: true,
-    autoDensity: true,
-    resolution: Math.min(window.devicePixelRatio || 1, 2),
-    powerPreference: 'low-power'
-  });
+  app = new PIXI.Application({ view: $('stage'), resizeTo: window, backgroundAlpha: 0, antialias: true, autoDensity: true,
+    resolution: Math.min(window.devicePixelRatio || 1, 2), powerPreference: 'low-power' });
 
   function fit() {
     if (!model) return;
     const w = app.screen.width, h = app.screen.height;
+    const top = 50, bh = $('bottom').offsetHeight;
+    const availH = Math.max(120, h - top - bh);
     model.scale.set(1);
-    const mw = model.width, mh = model.height;
-    const s = Math.min((w * 0.95) / mw, (h * 0.68) / mh);
+    const s = Math.min((w * 0.95) / model.width, (availH * 0.98) / model.height);
     model.scale.set(s);
     model.anchor.set(0.5, 0.5);
     model.x = w / 2;
-    model.y = h * 0.47;
+    model.y = top + availH / 2;
   }
   window.addEventListener('resize', fit);
+  try { new ResizeObserver(fit).observe($('bottom')); } catch (e) {}
 
-  function resetExpr() {
-    try { model.internalModel.motionManager.expressionManager.resetExpression(); } catch (e) {}
-  }
+  /* ---------- expressions & motions ---------- */
+  function resetExpr() { try { model.internalModel.motionManager.expressionManager.resetExpression(); } catch (e) {} }
   function setExpr(name) {
     try { resetExpr(); if (name) model.expression(name); } catch (e) { showErr('Expression error: ' + (e.message || e)); }
   }
-
-  function speak(text, rate, pitch) {
-    try {
-      if (!('speechSynthesis' in window)) return;
-      speechSynthesis.cancel();
-      const u = new SpeechSynthesisUtterance(text);
-      u.lang = 'hi-IN'; u.rate = rate || 1; u.pitch = pitch || 1.15;
-      const v = speechSynthesis.getVoices().find(v => /hi[-_]IN/i.test(v.lang));
-      if (v) u.voice = v;
-      speechSynthesis.speak(u);
-    } catch (e) {}
-  }
-
-  function play(group, expr, text, ms, rate, pitch) {
-    if (!model) return;
-    clearTimeout(resetTimer);
-    setExpr(expr);
-    speak(text, rate, pitch);
+  function motion(group) {
     const prio = (PIXI.live2d.MotionPriority && PIXI.live2d.MotionPriority.FORCE) || 3;
     Promise.resolve(model.motion(group, undefined, prio)).then((ok) => {
       if (ok === false) showErr('"' + group + '" motion nahi mili. GitHub par naya catu.model3.json aur motion files upload hui?');
     }).catch((e) => showErr('Motion error: ' + (e.message || e)));
-    resetTimer = setTimeout(resetExpr, ms);
   }
 
-  $('bHello').onclick = () => play('Hello', 'blush_heart', 'हेलो शुभम, कैसे हो?', 4700, 1, 1.2);
-  $('bCry').onclick   = () => play('Cry', 'tears', 'मैं बहुत उदास हूँ शुभम', 6200, 0.85, 1.25);
+  /* ---------- speech out (TTS) with lip sync ---------- */
+  let voices = [];
+  function loadVoices() { try { voices = speechSynthesis.getVoices(); } catch (e) {} }
+  loadVoices();
+  try { speechSynthesis.onvoiceschanged = loadVoices; } catch (e) {}
+
+  function cleanForSpeech(t) {
+    return t.replace(/[\u{1F300}-\u{1FAFF}\u{2600}-\u{27BF}]/gu, '').replace(/[~*_#`]/g, '').replace(/\s+/g, ' ').trim();
+  }
+  function speak(text, opts) {
+    opts = opts || {};
+    try {
+      if (!('speechSynthesis' in window)) return;
+      speechSynthesis.cancel();
+      const clean = cleanForSpeech(text);
+      if (!clean) return;
+      const u = new SpeechSynthesisUtterance(clean);
+      const hindi = /[\u0900-\u097F]/.test(clean);
+      u.lang = hindi ? 'hi-IN' : 'en-IN';
+      u.rate = opts.rate || 1.05; u.pitch = opts.pitch || 1.25;
+      const v = voices.find(v => v.lang.replace('_','-').toLowerCase() === u.lang.toLowerCase()) ||
+                voices.find(v => v.lang.toLowerCase().startsWith(hindi ? 'hi' : 'en'));
+      if (v) u.voice = v;
+      u.onstart = () => { speaking = true; };
+      u.onend = u.onerror = () => { speaking = false; };
+      speechSynthesis.speak(u);
+    } catch (e) { speaking = false; }
+  }
+
+  /* ---------- Gemini ---------- */
+  const SYSTEM = `You are Catu, a cute, warm, playful anime cat-girl AI voice assistant. The user's name is Shubham.
+Reply in the SAME language the user used: if they write Hindi or Hinglish, reply in Hindi written in Devanagari script (so a Hindi voice can read it); if they write English, reply in English.
+Keep replies SHORT: 1-2 sentences, spoken style, no lists, no markdown. Occasionally end with a cute "nya~" (in Hindi write "न्या~"). Be helpful and accurate.
+Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, angry, shy, dizzy, begging), "reply" (string), "greeting" (true only if the user is just greeting you).`;
+
+  const SCHEMA = { type: 'OBJECT', properties: {
+    emotion: { type: 'STRING', enum: ['neutral','happy','love','surprised','sad','angry','shy','dizzy','begging'] },
+    reply: { type: 'STRING' }, greeting: { type: 'BOOLEAN' } }, required: ['emotion','reply'] };
+
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+  async function callGemini(modelName, key, contents) {
+    const url = 'https://generativelanguage.googleapis.com/v1beta/models/' + encodeURIComponent(modelName) + ':generateContent';
+    const res = await fetch(url, { method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-goog-api-key': key },
+      body: JSON.stringify({ systemInstruction: { parts: [{ text: SYSTEM }] }, contents,
+        generationConfig: { temperature: 1, responseMimeType: 'application/json', responseSchema: SCHEMA } }) });
+    if (!res.ok) { let d = ''; try { d = (await res.json()).error.message; } catch (e) {} const err = new Error(d || ('HTTP ' + res.status)); err.status = res.status; throw err; }
+    const data = await res.json();
+    const parts = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts) || [];
+    const text = parts.map(p => p.text || '').join('').trim();
+    if (!text) throw new Error('Khaali jawab aaya');
+    try { return JSON.parse(text.replace(/^```json|```$/g, '').trim()); }
+    catch (e) { return { emotion: 'neutral', reply: text }; }
+  }
+
+  async function askGemini(userText) {
+    const key = localStorage.getItem('catu_key');
+    if (!key) { openSettings(); throw new Error('Pehle Gemini API key daalo (⚙️).'); }
+    const main = localStorage.getItem('catu_model') || DEFAULT_MODEL;
+    const contents = history.concat([{ role: 'user', parts: [{ text: userText }] }]);
+    const order = [main, main, main, FALLBACK_MODEL];
+    let lastErr;
+    for (let i = 0; i < order.length; i++) {
+      try { return await callGemini(order[i], key, contents); }
+      catch (e) {
+        lastErr = e;
+        if ([400, 401, 403, 404].includes(e.status)) {
+          if (e.status === 404 && order[i] !== FALLBACK_MODEL) { continue; }
+          throw new Error(e.status === 404 ? 'Model naam galat hai. ⚙️ mein "gemini-flash-latest" likh ke dekho.' : 'API key ya request galat: ' + e.message);
+        }
+        if (i < order.length - 1) await sleep(1000 * Math.pow(2, i));
+      }
+    }
+    throw new Error('Server busy hai nya~ thodi der baad try karo. (' + (lastErr && lastErr.message || '') + ')');
+  }
+
+  /* ---------- chat UI ---------- */
+  const chat = $('chat');
+  function bubble(text, who) {
+    const d = document.createElement('div'); d.className = 'b ' + who; d.textContent = text;
+    chat.appendChild(d); chat.scrollTop = chat.scrollHeight;
+    while (chat.children.length > 30) chat.removeChild(chat.firstChild);
+    return d;
+  }
+  bubble('Konnichiwa Shubham! Main Catu hoon nya~ Mic dabao ya kuch type karo!', 'cat');
+
+  let busy = false;
+  async function send(text) {
+    text = (text || '').trim();
+    if (!text || busy || !model) return;
+    busy = true; $('txt').value = '';
+    bubble(text, 'me');
+    const thinking = bubble('...', 'cat');
+    try {
+      const r = await askGemini(text);
+      history.push({ role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: r.reply }] });
+      history = history.slice(-16);
+      thinking.textContent = r.reply;
+      chat.scrollTop = chat.scrollHeight;
+      react(r);
+    } catch (e) {
+      thinking.textContent = 'Oops nya~ ' + e.message;
+      showErr(e.message);
+    } finally { busy = false; }
+  }
+
+  function react(r) {
+    clearTimeout(resetTimer);
+    const emo = EMO_MAP.hasOwnProperty(r.emotion) ? r.emotion : 'neutral';
+    setExpr(EMO_MAP[emo]);
+    if (r.greeting) motion('Hello'); else if (emo === 'sad') motion('Cry');
+    speak(r.reply, emo === 'sad' ? { rate: 0.95, pitch: 1.15 } : {});
+    resetTimer = setTimeout(resetExpr, Math.max(3500, r.reply.length * 90));
+  }
+
+  $('send').onclick = () => send($('txt').value);
+  $('txt').addEventListener('keydown', (e) => { if (e.key === 'Enter') send($('txt').value); });
+
+  /* ---------- mic ---------- */
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  let rec = null, listening = false;
+  $('mic').onclick = () => {
+    if (!SR) { showErr('Is browser mein mic support nahi hai. Chrome use karo.'); return; }
+    if (listening) { try { rec.stop(); } catch (e) {} return; }
+    try { speechSynthesis.cancel(); speaking = false; } catch (e) {}
+    rec = new SR(); rec.lang = 'hi-IN'; rec.interimResults = false; rec.maxAlternatives = 1;
+    rec.onstart = () => { listening = true; $('mic').classList.add('rec'); };
+    rec.onend = () => { listening = false; $('mic').classList.remove('rec'); };
+    rec.onerror = (e) => { listening = false; $('mic').classList.remove('rec'); if (e.error !== 'no-speech' && e.error !== 'aborted') showErr('Mic error: ' + e.error + (e.error === 'not-allowed' ? ' (Chrome mein mic permission do)' : '')); };
+    rec.onresult = (e) => { const t = e.results[0][0].transcript; send(t); };
+    try { rec.start(); } catch (e) { showErr('Mic start nahi hua: ' + e.message); }
+  };
+
+  /* ---------- buttons ---------- */
+  $('bHello').onclick = () => {
+    if (!model) return; clearTimeout(resetTimer);
+    setExpr('blush_heart'); motion('Hello'); speak('हेलो शुभम, कैसे हो?', { rate: 1.1, pitch: 1.3 });
+    resetTimer = setTimeout(resetExpr, 3200);
+  };
+  $('bCry').onclick = () => {
+    if (!model) return; clearTimeout(resetTimer);
+    setExpr('tears'); motion('Cry'); speak('मैं बहुत उदास हूँ शुभम', { rate: 0.95, pitch: 1.2 });
+    resetTimer = setTimeout(resetExpr, 4500);
+  };
+  $('bExp').onclick = () => { const c = $('chips'); c.style.display = c.style.display === 'flex' ? 'none' : 'flex'; c.style.flexWrap = 'wrap'; fit(); };
 
   const chips = $('chips');
   EXPRESSIONS.forEach((n) => {
@@ -125,33 +285,44 @@
   const rb = document.createElement('button');
   rb.textContent = '↺ reset'; rb.onclick = () => { clearTimeout(resetTimer); resetExpr(); };
   chips.appendChild(rb);
-
-
-  // Creator's own watermark toggle (watermark_toggle.exp3.json): applied as parameters every frame,
-  // so it works together with the other expressions.
   const wb = document.createElement('button');
-  wb.textContent = '🏷 watermark toggle';
-  wb.onclick = () => {
-    if (!wmParams) { showErr('watermark_toggle.exp3.json load nahi hui. GitHub par upload hui?'); return; }
-    wmOn = !wmOn;
-    wb.style.borderColor = wmOn ? '#f472b6' : '';
-    wb.textContent = wmOn ? '🏷 watermark toggle (ON)' : '🏷 watermark toggle';
-  };
+  const wbLabel = () => { wb.textContent = wmOn ? '🏷 watermark: hidden' : '🏷 watermark: shown'; };
+  wbLabel();
+  wb.onclick = () => { wmOn = !wmOn; wbLabel(); };
   chips.appendChild(wb);
   fetch('watermark_toggle.exp3.json').then(r => r.json()).then(j => { wmParams = j.Parameters || []; }).catch(() => {});
+  chips.style.justifyContent = 'center';
 
+  /* ---------- settings ---------- */
+  function openSettings() { $('key').value = localStorage.getItem('catu_key') || ''; $('model').value = localStorage.getItem('catu_model') || ''; $('settings').style.display = 'block'; }
+  $('gear').onclick = openSettings;
+  $('closeS').onclick = () => { $('settings').style.display = 'none'; };
+  $('saveS').onclick = () => {
+    localStorage.setItem('catu_key', $('key').value.trim());
+    const m = $('model').value.trim(); if (m) localStorage.setItem('catu_model', m); else localStorage.removeItem('catu_model');
+    $('settings').style.display = 'none';
+  };
+  $('clearChat').onclick = () => { history = []; chat.innerHTML = ''; bubble('Chat saaf ho gayi nya~', 'cat'); $('settings').style.display = 'none'; };
+
+  /* ---------- load model ---------- */
   PIXI.live2d.Live2DModel.from(MODEL_URL, { autoInteract: false }).then((m) => {
     model = m;
     app.stage.addChild(model);
     try {
+      let t0 = performance.now();
       model.internalModel.on('beforeModelUpdate', () => {
-        if (!wmOn || !wmParams) return;
         const cm = model.internalModel.coreModel;
-        wmParams.forEach(p => { try { cm.setParameterValueById(p.Id, p.Value); } catch (e) {} });
+        if (wmOn && wmParams) wmParams.forEach(p => { try { cm.setParameterValueById(p.Id, p.Value); } catch (e) {} });
+        // lip sync while Catu is speaking
+        const t = (performance.now() - t0) / 1000;
+        const target = speaking ? Math.min(1, 0.15 + 0.6 * Math.abs(Math.sin(t * 9)) * (0.6 + 0.4 * Math.sin(t * 3.7))) : 0;
+        mouth += (target - mouth) * 0.35;
+        if (speaking || mouth > 0.02) { try { cm.setParameterValueById('ParamMouthOpenY', mouth); } catch (e) {} }
       });
-    } catch (e) { showErr('Watermark hook error: ' + (e.message || e)); }
+    } catch (e) { showErr('Hook error: ' + (e.message || e)); }
     fit();
     $('load').style.display = 'none';
+    if (!localStorage.getItem('catu_key')) openSettings();
   }).catch((e) => {
     $('load').style.display = 'none';
     showErr('Model load error: ' + (e && e.message || e));
