@@ -28,6 +28,7 @@
   .row { display:flex; gap:8px; flex-wrap:wrap; justify-content:center; margin-top:8px; }
   .chips button { font-size:12px; padding:6px 10px; border-radius:99px; }
   #chips { display:none; position:absolute; left:0; right:0; bottom:100%; padding:0 12px 6px; justify-content:center; flex-wrap:wrap; background:linear-gradient(to top, rgba(11,4,32,.9), rgba(11,4,32,0)); }
+  .dbgl { font-size:11px; color:#a78bfa; opacity:.9; align-self:flex-start; padding:0 6px; min-height:0; }
   #stat { font-size:12px; color:#f9a8d4; margin-left:6px; }
   #msg { position:fixed; left:12px; right:12px; top:calc(env(safe-area-inset-top,0px) + 48px); z-index:8; font-size:13px; padding:10px 12px; border-radius:12px; display:none; background:rgba(150,20,30,.94); white-space:pre-wrap; word-break:break-word; }
   #load { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; z-index:4; font-size:16px; color:#c4b5fd; pointer-events:none; text-align:center; padding:20px; }
@@ -90,12 +91,12 @@
   const MODEL_URL = 'catu.model3.json';
   const EXPRESSIONS = ['dark_face','blush_heart','angry','dizzy','star_eyes','tears','hold_heart','begging','dot_eyes','monthly_card','squint'];
   const EMO_MAP = { neutral:null, happy:'star_eyes', love:'blush_heart', surprised:'dot_eyes', sad:'tears', angry:'angry', shy:'hold_heart', dizzy:'dizzy', begging:'begging' };
-  const DEFAULT_MODEL = 'gemini-flash-latest';
-  const FALLBACK_MODEL = 'gemini-flash-lite-latest';
+  const DEFAULT_MODEL = 'gemini-flash-lite-latest';
+  const FALLBACK_MODEL = 'gemini-flash-latest';
 
   let model = null, app = null, resetTimer = null;
   let wmParams = null, wmOn = true;           // artist's own watermark switch; ON = watermark hidden
-  let speaking = false, mouth = 0;
+  let speaking = false, mouth = 0, isThinking = false, think = 0;
   let history = [];
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const setStat = (t) => { $('stat').textContent = t || ''; };
@@ -141,7 +142,7 @@
   /* ---------- voice out: Gemini TTS + Web Audio (real lip sync) ---------- */
   let actx = null, analyser = null, curSrc = null, audioPlaying = false;
   const lvlBuf = new Float32Array(512);
-  const ttsCache = new Map();
+  const ttsCache = new Map(); const badTTS = {};
   function unlockAudio() {
     try {
       if (!actx) {
@@ -151,7 +152,11 @@
       if (actx.state === 'suspended') actx.resume();
     } catch (e) {}
   }
-  document.addEventListener('pointerdown', unlockAudio);
+  let primed = false;
+  document.addEventListener('pointerdown', () => {
+    unlockAudio();
+    if (!primed) { primed = true; try { const u = new SpeechSynthesisUtterance(' '); u.volume = 0; speechSynthesis.speak(u); } catch (e) {} }
+  });
 
   function stopAudio() {
     try { if (curSrc) { curSrc.onended = null; curSrc.stop(); } } catch (e) {}
@@ -171,8 +176,10 @@
     const voice = localStorage.getItem('catu_voice') || 'Leda';
     const ck = voice + '|' + emo + '|' + text;
     if (ttsCache.has(ck)) return ttsCache.get(ck);
-    const prompt = 'Say in a cute, sweet, expressive young anime girl voice, ' + (STYLE[emo] || STYLE.neutral) + ': ' + text;
-    const models = [localStorage.getItem('catu_tts') || 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'];
+    const prompt = 'Say cutely, ' + (STYLE[emo] || STYLE.neutral) + ': ' + text;
+    let models = [localStorage.getItem('catu_tts') || 'gemini-3.1-flash-tts-preview', 'gemini-2.5-flash-preview-tts'];
+    const okModels = models.filter(m => !(badTTS[m] && badTTS[m] > Date.now()));
+    if (okModels.length) models = okModels;
     let lastErr;
     for (const m of models) {
       for (let attempt = 0; attempt < 2; attempt++) {
@@ -191,7 +198,7 @@
           const rm = /rate=(\d+)/.exec(inl.mimeType || ''); const out = { f32, rate: rm ? +rm[1] : 24000 };
           ttsCache.set(ck, out); return out;
         } catch (e) {
-          lastErr = e;
+          lastErr = e; badTTS[m] = Date.now() + 60000;
           if ([400, 401, 403, 404, 408, 429].includes(e.status)) break;   // go to next model straight away
           await sleep(600);
         }
@@ -226,17 +233,21 @@
   }
 
   // speak text; run onStart (expression / motion) exactly when the voice begins
+  let dbgEl = null;
+  const dbg = (t) => { if (dbgEl) dbgEl.textContent = t; };
   async function say(text, emo, onStart) {
     const clean = cleanForSpeech(text);
     setStat('🔊 awaaz ban rahi hai...');
+    const t0 = performance.now();
     try {
       const a = await geminiTTS(clean, emo || 'neutral');
       setStat('');
+      dbg((dbgEl ? dbgEl.textContent + ' · ' : '') + 'awaaz ' + ((performance.now() - t0) / 1000).toFixed(1) + 's ✅');
       await playPCM(a, onStart);
     } catch (e) {
       setStat('');
-      const why = e.status === 429 ? 'Gemini awaaz ki limit bhar gayi (thodi der ruko)' : (e.message || e);
-      showErr('Gemini awaaz nahi bani, phone ki awaaz use ho rahi hai. (' + why + ')');
+      const why = e.status === 429 ? 'limit bhar gayi (429)' : (e.message || e);
+      dbg((dbgEl ? dbgEl.textContent + ' · ' : '') + '⚠️ Gemini awaaz fail: ' + why + ' → phone awaaz');
       if (onStart) onStart(); browserSpeak(text);
     }
   }
@@ -244,7 +255,7 @@
   /* ---------- Gemini ---------- */
   const SYSTEM = `You are Catu, a cute, warm, playful anime cat-girl AI voice assistant. The user's name is Shubham.
 Reply in the SAME language the user used: if they write Hindi or Hinglish, reply in Hindi written in Devanagari script (so a Hindi voice can read it); if they write English, reply in English.
-Keep replies SHORT: 1-2 sentences, spoken style, no lists, no markdown. Occasionally end with a cute "nya~" (in Hindi write "न्या~"). Be helpful and accurate.
+Keep replies VERY SHORT: ONE sentence, at most 15 words, spoken style, no lists, no markdown. Occasionally end with a cute "nya~" (in Hindi write "न्या~"). Be helpful and accurate.
 Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, angry, shy, dizzy, begging), "reply" (string), "greeting" (true only if the user is just greeting you).`;
 
   const SCHEMA = { type: 'OBJECT', properties: {
@@ -304,17 +315,20 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
     unlockAudio(); stopAudio(); busy = true; $('txt').value = '';
     bubble(text, 'me');
     const thinking = bubble('...', 'cat');
-    setStat('🧠 soch rahi hai...');
+    dbgEl = document.createElement('div'); dbgEl.className = 'dbgl'; chat.appendChild(dbgEl);
+    setStat('🧠 soch rahi hai...'); isThinking = true;
+    const ts = performance.now();
     try {
       const r = await askGemini(text);
-      setStat('');
+      setStat(''); isThinking = false;
+      dbg('jawab ' + ((performance.now() - ts) / 1000).toFixed(1) + 's');
       history.push({ role: 'user', parts: [{ text }] }, { role: 'model', parts: [{ text: r.reply }] });
       history = history.slice(-16);
       thinking.textContent = r.reply;
       chat.scrollTop = chat.scrollHeight;
       react(r);
     } catch (e) {
-      setStat('');
+      setStat(''); isThinking = false;
       thinking.textContent = 'Oops nya~ ' + e.message;
       showErr(e.message);
     } finally { busy = false; }
@@ -391,6 +405,13 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
           set(cm, 'MouthJawOpen', mouth * 0.9);
           set(cm, 'MouthFunnel', mouth * 0.35 * (0.5 + 0.5 * Math.sin(t * 5)));
           if (active) set(cm, 'ParamMouthForm', 0.35);
+        }
+        think += ((isThinking ? 1 : 0) - think) * 0.12;
+        if (think > 0.01) {
+          add(cm, 'ParamAngleZ', 9 * think);
+          add(cm, 'ParamAngleY', 6 * think);
+          add(cm, 'ParamEyeBallY', 0.5 * think);
+          add(cm, 'ParamBodyAngleZ', 2 * think);
         }
         if (active) {                      // little head/body movement with the voice
           add(cm, 'ParamAngleY', -mouth * 5 + 1.5 * Math.sin(t * 2.6));
