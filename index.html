@@ -96,7 +96,7 @@
 
   let model = null, app = null, resetTimer = null;
   let wmParams = null, wmOn = true;           // artist's own watermark switch; ON = watermark hidden
-  let speaking = false, mouth = 0, isThinking = false, think = 0;
+  let speaking = false, frameNo = 0, mouth = 0, isThinking = false, think = 0;
   let history = [];
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
   const setStat = (t) => { $('stat').textContent = t || ''; };
@@ -227,7 +227,9 @@
       const u = new SpeechSynthesisUtterance(clean);
       const hindi = /[\u0900-\u097F]/.test(clean); u.lang = hindi ? 'hi-IN' : 'en-IN'; u.rate = 1.05; u.pitch = 1.25;
       const v = voices.find(v => v.lang.toLowerCase().startsWith(hindi ? 'hi' : 'en')); if (v) u.voice = v;
-      u.onstart = () => { speaking = true; }; u.onend = u.onerror = () => { speaking = false; };
+      speaking = true; clearTimeout(browserSpeak.t);
+      browserSpeak.t = setTimeout(() => { speaking = false; }, Math.max(1800, clean.length * 85));
+      u.onend = u.onerror = () => { clearTimeout(browserSpeak.t); speaking = false; };
       speechSynthesis.speak(u);
     } catch (e) { speaking = false; }
   }
@@ -400,17 +402,23 @@ Return JSON only, with: "emotion" (one of neutral, happy, love, surprised, sad, 
         if (audioPlaying && analyser) {
           analyser.getFloatTimeDomainData(lvlBuf);
           let s = 0; for (let i = 0; i < lvlBuf.length; i++) s += lvlBuf[i] * lvlBuf[i];
-          target = Math.min(1, Math.sqrt(s / lvlBuf.length) * 9);
+          const rms = Math.sqrt(s / lvlBuf.length);
+          target = rms > 0.008 ? Math.min(1, 0.25 + rms * 10) : 0;
         } else if (speaking) {
-          target = Math.min(1, 0.15 + 0.6 * Math.abs(Math.sin(t * 9)) * (0.6 + 0.4 * Math.sin(t * 3.7)));
+          target = Math.min(1, 0.2 + 0.6 * Math.abs(Math.sin(t * 9)) * (0.6 + 0.4 * Math.sin(t * 3.7)));
         }
-        mouth += (target - mouth) * 0.55;
+        mouth += (target - mouth) * 0.6;
         const active = audioPlaying || speaking;
         if (active || mouth > 0.02) {
-          set(cm, 'ParamMouthOpenY', mouth);
-          set(cm, 'MouthJawOpen', mouth * 0.9);
-          set(cm, 'MouthFunnel', mouth * 0.35 * (0.5 + 0.5 * Math.sin(t * 5)));
-          if (active) set(cm, 'ParamMouthForm', 0.35);
+          set(cm, 'ParamMouthOpenY', mouth);   set(cm, 'ParamMouthOpenY2', mouth);
+          set(cm, 'MouthJawOpen', mouth * 0.9); set(cm, 'MouthJawOpen2', mouth * 0.9);
+          set(cm, 'MouthFunnel', mouth * 0.3 * (0.5 + 0.5 * Math.sin(t * 5)));
+          if (active) { set(cm, 'ParamMouthForm', 0.3); set(cm, 'ParamMouthForm2', 0.3); }
+        }
+        if ((frameNo++ % 8) === 0) {
+          const st = $('stat');
+          if (active) st.textContent = '👄 ' + mouth.toFixed(2) + (audioPlaying ? ' 🔊' : ' 📱');
+          else if (st.textContent.charAt(0) === '👄') st.textContent = '';
         }
         think += ((isThinking ? 1 : 0) - think) * 0.12;
         if (think > 0.01) {
