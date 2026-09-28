@@ -60,6 +60,20 @@
         {
           "File": "motion_sleep.motion3.json"
         }
+      ],
+      "Hello": [
+        {
+          "File": "motion_hello.motion3.json",
+          "FadeInTime": 0.4,
+          "FadeOutTime": 0.6
+        }
+      ],
+      "Cry": [
+        {
+          "File": "motion_cry.motion3.json",
+          "FadeInTime": 0.6,
+          "FadeOutTime": 0.8
+        }
       ]
     }
   },
